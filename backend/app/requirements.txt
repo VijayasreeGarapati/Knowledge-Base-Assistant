@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+langchain
+openai
+sentence-transformers
+faiss-cpu
+python-dotenv
+pydantic
+requests
+tqdm
+langchain-community
+transformers
+pypdf
