@@ -1,13 +1,23 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException # type: ignore
 from pydantic import BaseModel
 from .retriever import get_rag_chain
 from dotenv import load_dotenv
 import os
+from fastapi.middleware.cors import CORSMiddleware # type: ignore
+
 
 # Load env from root
 load_dotenv()
 
 app = FastAPI(title="KB-Assistant")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # in production, restrict to your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class QueryRequest(BaseModel):
     query: str

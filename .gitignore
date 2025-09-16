@@ -1,0 +1,47 @@
+# --- Python / Backend ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+.env
+venv/
+.env.*.local
+
+# --- FastAPI / Data ---
+data/faiss_index/
+data/*.json
+data/*.pkl
+
+# --- Node / Frontend ---
+frontend/chat-ui/node_modules/
+frontend/chat-ui/.pnp
+frontend/chat-ui/.pnp.js
+frontend/chat-ui/build/
+frontend/chat-ui/.next/
+frontend/chat-ui/.cache/
+frontend/chat-ui/dist/
+frontend/chat-ui/.parcel-cache/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+# --- IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Testing ---
+coverage/
+*.lcov
