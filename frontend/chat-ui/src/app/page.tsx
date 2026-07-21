@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
+
+interface Source {
+  source: string;
+  content: string;
+  page?: number;
+}
 
 interface Message {
   role: "user" | "assistant";
   text: string;
-  sources?: { source: string; content: string }[];
+  sources?: Source[];
 }
 
 export default function Home() {
@@ -14,34 +19,125 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const sendQuery = async () => {
-    if (!query.trim()) return;
-    setLoading(true);
+  const updateLastAssistant = (updater: (message: Message) => Message) => {
+    setMessages((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i -= 1) {
+        if (next[i].role === "assistant") {
+          next[i] = updater(next[i]);
+          break;
+        }
+      }
+      return next;
+    });
+  };
 
-    setMessages((prev) => [...prev, { role: "user", text: query }]);
-
-    try {
-      const res = await axios.post("http://127.0.0.1:8000/query", {
-        query,
+  const sendStandardQuery = async (question: string) => {
+    const res = await fetch("http://127.0.0.1:8000/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: question,
         top_k: 3,
-      });
+      }),
+    });
 
-      const answer = res.data.answer;
-      const sources = res.data.sources;
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: answer, sources },
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: "⚠️ Error contacting backend." },
-      ]);
+    if (!res.ok) {
+      throw new Error("Backend request failed");
     }
 
+    const data = await res.json();
+    updateLastAssistant(() => ({
+      role: "assistant",
+      text: data.answer,
+      sources: data.sources,
+    }));
+  };
+
+  const sendQuery = async () => {
+    if (!query.trim()) return;
+    const question = query;
+    setLoading(true);
     setQuery("");
-    setLoading(false);
+
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", text: question },
+      { role: "assistant", text: "" },
+    ]);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/query/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: question,
+          top_k: 3,
+        }),
+      });
+
+      if (!res.ok || !res.body) {
+        await sendStandardQuery(question);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const handleEvent = (rawEvent: string) => {
+        const event = rawEvent
+          .split("\n")
+          .find((line) => line.startsWith("event: "))
+          ?.replace("event: ", "");
+        const data = rawEvent
+          .split("\n")
+          .find((line) => line.startsWith("data: "))
+          ?.replace("data: ", "");
+
+        if (!event || !data) return;
+
+        const parsed = JSON.parse(data);
+        if (event === "sources") {
+          updateLastAssistant((message) => ({ ...message, sources: parsed }));
+        }
+        if (event === "chunk") {
+          updateLastAssistant((message) => ({
+            ...message,
+            text: `${message.text}${parsed.text}`,
+          }));
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        events.forEach(handleEvent);
+      }
+
+      if (buffer) handleEvent(buffer);
+    } catch {
+      setMessages((prev) => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i -= 1) {
+          if (next[i].role === "assistant") {
+            next[i] = { role: "assistant", text: "⚠️ Error contacting backend." };
+            return next;
+          }
+        }
+        return [...next, { role: "assistant", text: "⚠️ Error contacting backend." }];
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -66,15 +162,23 @@ export default function Home() {
                   : "bg-gray-200 text-gray-900"
               }`}
             >
-              <p className="whitespace-pre-line">{msg.text}</p>
+              <p className="whitespace-pre-line">
+                {msg.text || (loading && msg.role === "assistant" ? "Thinking..." : "")}
+              </p>
               {msg.sources && (
-                <div className="mt-2 text-xs text-gray-600">
+                <div className="mt-3 text-xs text-gray-700">
                   <b>Sources:</b>
-                  <ul className="list-disc ml-4">
+                  <div className="mt-1 space-y-2">
                     {msg.sources.map((s, j) => (
-                      <li key={j}>{s.source}</li>
+                      <details key={j} className="rounded border border-gray-300 bg-white p-2">
+                        <summary className="cursor-pointer font-medium">
+                          {s.source}
+                          {s.page ? `, page ${s.page}` : ""}
+                        </summary>
+                        <p className="mt-2 whitespace-pre-line text-gray-600">{s.content}</p>
+                      </details>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
@@ -87,6 +191,12 @@ export default function Home() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              sendQuery();
+            }
+          }}
           className="flex-1 border rounded-l-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
           placeholder="Ask me something..."
         />

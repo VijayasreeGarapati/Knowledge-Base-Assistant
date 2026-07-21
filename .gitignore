@@ -6,8 +6,10 @@ __pycache__/
 *.log
 *.sqlite3
 .env
+.venv/
 venv/
 .env.*.local
+tmp/
 
 # --- FastAPI / Data ---
 data/faiss_index/
